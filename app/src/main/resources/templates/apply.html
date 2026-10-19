@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply for Card - Credit Card Service Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #F8F9FA; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+        <div class="container">
+            <a class="navbar-brand text-primary-emphasis" href="/">💳 Credit Card Service Portal</a>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" id="nav-dashboard" href="/">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" id="nav-cards" href="/cards">Card Directory</a></li>
+                    <li class="nav-item"><a class="nav-link active" id="nav-apply" href="/apply">Apply for Card</a></li>
+                    <li class="nav-item"><a class="nav-link text-warning" id="nav-actuator" href="/actuator/health" target="_blank">Health Check</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm p-4">
+                    <div class="mb-4 text-center">
+                        <h2 class="fw-bold" id="form-heading">Digital Credit Card Onboarding</h2>
+                        <p class="text-muted">Submit your application for immediate digital review and credit evaluation.</p>
+                    </div>
+
+                    <form th:action="@{/apply}" th:object="${applicationDto}" method="post" id="card-application-form">
+                        
+                        <!-- Full Name -->
+                        <div class="mb-3">
+                            <label for="customerName" class="form-label fw-semibold">Customer Full Name</label>
+                            <input type="text" class="form-control" th:field="*{customerName}" id="customerName"
+                                   placeholder="e.g. Aditi Rao" th:errorclass="is-invalid">
+                            <div class="invalid-feedback" th:if="${#fields.hasErrors('customerName')}" th:errors="*{customerName}" id="err-customerName">
+                                Name is required.
+                            </div>
+                        </div>
+
+                        <!-- Email -->
+                        <div class="mb-3">
+                            <label for="email" class="form-label fw-semibold">Email Address</label>
+                            <input type="email" class="form-control" th:field="*{email}" id="email"
+                                   placeholder="name@example.com" th:errorclass="is-invalid">
+                            <div class="invalid-feedback" th:if="${#fields.hasErrors('email')}" th:errors="*{email}" id="err-email">
+                                Please provide a valid email.
+                            </div>
+                        </div>
+
+                        <!-- Card Type & Requested Limit -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label for="cardType" class="form-label fw-semibold">Desired Card Tier</label>
+                                <select class="form-select" th:field="*{cardType}" id="cardType" th:errorclass="is-invalid">
+                                    <option value="">Select Tier...</option>
+                                    <option th:each="type : ${cardTypes}"
+                                            th:value="${type}"
+                                            th:text="${type.displayName} + ' (Max ₹' + ${#numbers.formatDecimal(type.maxLimit, 0, 'COMMA', 0, 'POINT')} + ')'">
+                                        Platinum Card
+                                    </option>
+                                </select>
+                                <div class="invalid-feedback" th:if="${#fields.hasErrors('cardType')}" th:errors="*{cardType}" id="err-cardType">
+                                    Please select a card tier.
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="creditLimit" class="form-label fw-semibold">Requested Limit (₹)</label>
+                                <input type="number" class="form-control" th:field="*{creditLimit}" id="creditLimit"
+                                       placeholder="e.g. 150000" th:errorclass="is-invalid">
+                                <div class="invalid-feedback" th:if="${#fields.hasErrors('creditLimit')}" th:errors="*{creditLimit}" id="err-creditLimit">
+                                    Limit must be between ₹10,000 and ₹10,00,000.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Annual Income & Employment Status -->
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label for="annualIncome" class="form-label fw-semibold">Annual Income (₹)</label>
+                                <input type="number" class="form-control" th:field="*{annualIncome}" id="annualIncome"
+                                       placeholder="e.g. 750000" th:errorclass="is-invalid">
+                                <div class="invalid-feedback" th:if="${#fields.hasErrors('annualIncome')}" th:errors="*{annualIncome}" id="err-annualIncome">
+                                    Annual income must be greater than ₹1,00,000.
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="employmentStatus" class="form-label fw-semibold">Employment Status</label>
+                                <select class="form-select" th:field="*{employmentStatus}" id="employmentStatus" th:errorclass="is-invalid">
+                                    <option value="">Select Status...</option>
+                                    <option value="Salaried">Salaried (Full-Time)</option>
+                                    <option value="Self-Employed">Self-Employed Business / Professional</option>
+                                    <option value="Freelancer">Independent Consultant / Freelancer</option>
+                                </select>
+                                <div class="invalid-feedback" th:if="${#fields.hasErrors('employmentStatus')}" th:errors="*{employmentStatus}" id="err-employmentStatus">
+                                    Please select your employment status.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" id="btn-submit-application">Submit Card Application &rarr;</button>
+                            <a href="/cards" class="btn btn-outline-secondary" id="btn-cancel">Cancel and Return</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
