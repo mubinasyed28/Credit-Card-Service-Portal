@@ -90,6 +90,41 @@ public class CreditCardServiceTest {
         assertTrue(metrics.containsKey("active"), "Metrics must contain active count");
         assertTrue(metrics.containsKey("pending"), "Metrics must contain pending count");
         assertTrue(metrics.containsKey("blocked"), "Metrics must contain blocked count");
+        assertTrue(metrics.containsKey("totalCreditLimit"), "Metrics must contain total credit limit sum");
         assertTrue(metrics.get("total") >= 4, "Total cards count should be >= 4");
+    }
+
+    @Test
+    @DisplayName("Test 6: Update Credit Limit Within Eligibility Ceiling")
+    public void testUpdateCreditLimitSuccess() {
+        CardApplicationDto dto = new CardApplicationDto();
+        dto.setCustomerName("Rohan Verma");
+        dto.setEmail("rohan.verma@example.com");
+        dto.setCardType(CardType.PLATINUM);
+        dto.setCreditLimit(250000.0);
+        dto.setAnnualIncome(1000000.0); // max eligible = min(400k, 1000k) = 400k
+        dto.setEmploymentStatus("Salaried");
+
+        CreditCard applied = service.applyForCard(dto);
+        CreditCard updated = service.updateCreditLimit(applied.getId(), 350000.0);
+
+        assertEquals(350000.0, updated.getCreditLimit(), "Credit limit should be successfully updated to 350,000");
+    }
+
+    @Test
+    @DisplayName("Test 7: Reject Limit Update Exceeding Eligibility Ceiling")
+    public void testUpdateCreditLimitExceedingEligibility() {
+        CardApplicationDto dto = new CardApplicationDto();
+        dto.setCustomerName("Ananya Joshi");
+        dto.setEmail("ananya.joshi@example.com");
+        dto.setCardType(CardType.GOLD);
+        dto.setCreditLimit(100000.0);
+        dto.setAnnualIncome(500000.0); // max eligible = min(200k, 500k) = 200k
+        dto.setEmploymentStatus("Salaried");
+
+        CreditCard applied = service.applyForCard(dto);
+        assertThrows(IllegalArgumentException.class, () -> {
+            service.updateCreditLimit(applied.getId(), 250000.0); // 250k exceeds 200k limit ceiling
+        }, "Should throw IllegalArgumentException when limit exceeds 40% income cap");
     }
 }
