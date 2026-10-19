@@ -97,12 +97,40 @@ public class CreditCardService {
         return repository.save(card);
     }
 
+    public CreditCard updateCreditLimit(Long id, Double newLimit) {
+        CreditCard card = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Card not found with ID: " + id));
+        if (newLimit == null || newLimit <= 0) {
+            throw new IllegalArgumentException("Credit limit must be greater than zero.");
+        }
+        Double maxEligible = calculateMaxEligibleLimit(card.getAnnualIncome(), card.getCardType());
+        if (newLimit > maxEligible) {
+            throw new IllegalArgumentException("Requested limit (INR " + String.format("%.0f", newLimit) + 
+                    ") exceeds eligibility ceiling of INR " + String.format("%.0f", maxEligible));
+        }
+        card.setCreditLimit(newLimit);
+        return repository.save(card);
+    }
+
+    public CreditCard updateContactEmail(Long id, String newEmail) {
+        CreditCard card = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Card not found with ID: " + id));
+        if (newEmail == null || !newEmail.contains("@")) {
+            throw new IllegalArgumentException("Invalid email address format.");
+        }
+        card.setEmail(newEmail.trim());
+        return repository.save(card);
+    }
+
     public Map<String, Long> getMetrics() {
         Map<String, Long> metrics = new HashMap<>();
         metrics.put("total", repository.count());
         metrics.put("active", repository.countByStatus(CardStatus.ACTIVE));
         metrics.put("pending", repository.countByStatus(CardStatus.PENDING));
         metrics.put("blocked", repository.countByStatus(CardStatus.BLOCKED));
+        metrics.put("rejected", repository.countByStatus(CardStatus.REJECTED));
+        long totalLimitSum = (long) repository.findAll().stream().mapToDouble(CreditCard::getCreditLimit).sum();
+        metrics.put("totalCreditLimit", totalLimitSum);
         return metrics;
     }
 
