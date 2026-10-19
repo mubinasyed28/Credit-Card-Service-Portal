@@ -17,6 +17,8 @@ public interface CreditCardRepository extends JpaRepository<CreditCard, Long> {
 
     Optional<CreditCard> findByEmail(String email);
 
+    boolean existsByCardNumber(String cardNumber);
+
     long countByStatus(CardStatus status);
 
     @Query("SELECT c FROM CreditCard c WHERE " +

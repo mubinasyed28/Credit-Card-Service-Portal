@@ -67,9 +67,13 @@ public class CreditCardController {
             return "apply";
         }
 
+        Double maxEligible = service.calculateMaxEligibleLimit(dto.getAnnualIncome(), dto.getCardType());
         CreditCard savedCard = service.applyForCard(dto);
-        redirectAttributes.addFlashAttribute("successMessage", 
-                "Application submitted successfully! Application ID: #" + savedCard.getId() + " (" + savedCard.getCardNumber() + ")");
+        String msg = "Application submitted successfully! Application ID: #" + savedCard.getId() + " (" + savedCard.getCardNumber() + ")";
+        if (dto.getCreditLimit() > maxEligible) {
+            msg += " (Note: Credit limit capped at eligibility ceiling of INR " + String.format("%.0f", maxEligible) + ")";
+        }
+        redirectAttributes.addFlashAttribute("successMessage", msg);
         return "redirect:/cards";
     }
 
@@ -100,4 +104,19 @@ public class CreditCardController {
         redirectAttributes.addFlashAttribute("errorMessage", "Application #" + id + " has been REJECTED.");
         return "redirect:/cards";
     }
+
+    @PostMapping("/cards/{id}/update-limit")
+    public String updateLimit(@PathVariable("id") Long id,
+                              @RequestParam("newLimit") Double newLimit,
+                              RedirectAttributes redirectAttributes) {
+        try {
+            CreditCard updated = service.updateCreditLimit(id, newLimit);
+            redirectAttributes.addFlashAttribute("successMessage", 
+                    "Credit limit for Card #" + id + " successfully updated to INR " + String.format("%.0f", updated.getCreditLimit()));
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Limit Update Failed: " + ex.getMessage());
+        }
+        return "redirect:/cards";
+    }
 }
+

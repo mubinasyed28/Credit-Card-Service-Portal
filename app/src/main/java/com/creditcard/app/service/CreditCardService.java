@@ -36,14 +36,32 @@ public class CreditCardService {
         return repository.searchCards(cleanQuery, status);
     }
 
+    public Double calculateMaxEligibleLimit(Double annualIncome, CardType cardType) {
+        if (annualIncome == null || annualIncome <= 0) {
+            return 0.0;
+        }
+        double incomeCap = annualIncome * 0.40;
+        return Math.min(incomeCap, cardType.getMaxLimit());
+    }
+
+    public boolean isEligibleForRequestedLimit(Double annualIncome, CardType cardType, Double requestedLimit) {
+        if (requestedLimit == null || requestedLimit <= 0) {
+            return false;
+        }
+        Double maxEligible = calculateMaxEligibleLimit(annualIncome, cardType);
+        return requestedLimit <= maxEligible;
+    }
+
     public CreditCard applyForCard(CardApplicationDto dto) {
+        Double maxEligible = calculateMaxEligibleLimit(dto.getAnnualIncome(), dto.getCardType());
+        Double finalLimit = Math.min(dto.getCreditLimit(), maxEligible);
         String generatedCardNumber = generateMaskedCardNumber();
         CreditCard card = new CreditCard(
                 generatedCardNumber,
                 dto.getCustomerName().trim(),
                 dto.getEmail().trim(),
                 dto.getCardType(),
-                dto.getCreditLimit(),
+                finalLimit,
                 dto.getAnnualIncome(),
                 dto.getEmploymentStatus(),
                 CardStatus.PENDING
@@ -79,17 +97,53 @@ public class CreditCardService {
         return repository.save(card);
     }
 
+    public CreditCard updateCreditLimit(Long id, Double newLimit) {
+        CreditCard card = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Card not found with ID: " + id));
+        if (newLimit == null || newLimit <= 0) {
+            throw new IllegalArgumentException("Credit limit must be greater than zero.");
+        }
+        Double maxEligible = calculateMaxEligibleLimit(card.getAnnualIncome(), card.getCardType());
+        if (newLimit > maxEligible) {
+            throw new IllegalArgumentException("Requested limit (INR " + String.format("%.0f", newLimit) + 
+                    ") exceeds eligibility ceiling of INR " + String.format("%.0f", maxEligible));
+        }
+        card.setCreditLimit(newLimit);
+        return repository.save(card);
+    }
+
+    public CreditCard updateContactEmail(Long id, String newEmail) {
+        CreditCard card = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Card not found with ID: " + id));
+        if (newEmail == null || !newEmail.contains("@")) {
+            throw new IllegalArgumentException("Invalid email address format.");
+        }
+        card.setEmail(newEmail.trim());
+        return repository.save(card);
+    }
+
     public Map<String, Long> getMetrics() {
         Map<String, Long> metrics = new HashMap<>();
-        metrics.put("total", repository.count());
-        metrics.put("active", repository.countByStatus(CardStatus.ACTIVE));
+        long total = repository.count();
+        long active = repository.countByStatus(CardStatus.ACTIVE);
+        metrics.put("total", total);
+        metrics.put("active", active);
         metrics.put("pending", repository.countByStatus(CardStatus.PENDING));
         metrics.put("blocked", repository.countByStatus(CardStatus.BLOCKED));
+        metrics.put("rejected", repository.countByStatus(CardStatus.REJECTED));
+        long approvalRate = total > 0 ? (active * 100 / total) : 0L;
+        metrics.put("approvalRate", approvalRate);
+        long totalLimitSum = (long) repository.findAll().stream().mapToDouble(CreditCard::getCreditLimit).sum();
+        metrics.put("totalCreditLimit", totalLimitSum);
         return metrics;
     }
 
     private String generateMaskedCardNumber() {
-        int last4 = 1000 + random.nextInt(9000);
-        return "****-****-****-" + last4;
+        String cardNum;
+        do {
+            int last4 = 1000 + random.nextInt(9000);
+            cardNum = "****-****-****-" + last4;
+        } while (repository.existsByCardNumber(cardNum));
+        return cardNum;
     }
 }
