@@ -67,9 +67,13 @@ public class CreditCardController {
             return "apply";
         }
 
+        Double maxEligible = service.calculateMaxEligibleLimit(dto.getAnnualIncome(), dto.getCardType());
         CreditCard savedCard = service.applyForCard(dto);
-        redirectAttributes.addFlashAttribute("successMessage", 
-                "Application submitted successfully! Application ID: #" + savedCard.getId() + " (" + savedCard.getCardNumber() + ")");
+        String msg = "Application submitted successfully! Application ID: #" + savedCard.getId() + " (" + savedCard.getCardNumber() + ")";
+        if (dto.getCreditLimit() > maxEligible) {
+            msg += " (Note: Credit limit capped at eligibility ceiling of INR " + String.format("%.0f", maxEligible) + ")";
+        }
+        redirectAttributes.addFlashAttribute("successMessage", msg);
         return "redirect:/cards";
     }
 

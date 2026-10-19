@@ -36,14 +36,32 @@ public class CreditCardService {
         return repository.searchCards(cleanQuery, status);
     }
 
+    public Double calculateMaxEligibleLimit(Double annualIncome, CardType cardType) {
+        if (annualIncome == null || annualIncome <= 0) {
+            return 0.0;
+        }
+        double incomeCap = annualIncome * 0.40;
+        return Math.min(incomeCap, cardType.getMaxLimit());
+    }
+
+    public boolean isEligibleForRequestedLimit(Double annualIncome, CardType cardType, Double requestedLimit) {
+        if (requestedLimit == null || requestedLimit <= 0) {
+            return false;
+        }
+        Double maxEligible = calculateMaxEligibleLimit(annualIncome, cardType);
+        return requestedLimit <= maxEligible;
+    }
+
     public CreditCard applyForCard(CardApplicationDto dto) {
+        Double maxEligible = calculateMaxEligibleLimit(dto.getAnnualIncome(), dto.getCardType());
+        Double finalLimit = Math.min(dto.getCreditLimit(), maxEligible);
         String generatedCardNumber = generateMaskedCardNumber();
         CreditCard card = new CreditCard(
                 generatedCardNumber,
                 dto.getCustomerName().trim(),
                 dto.getEmail().trim(),
                 dto.getCardType(),
-                dto.getCreditLimit(),
+                finalLimit,
                 dto.getAnnualIncome(),
                 dto.getEmploymentStatus(),
                 CardStatus.PENDING
