@@ -139,7 +139,11 @@ public class CreditCardService {
     }
 
     private String generateMaskedCardNumber() {
-        int last4 = 1000 + random.nextInt(9000);
-        return "****-****-****-" + last4;
+        String cardNum;
+        do {
+            int last4 = 1000 + random.nextInt(9000);
+            cardNum = "****-****-****-" + last4;
+        } while (repository.existsByCardNumber(cardNum));
+        return cardNum;
     }
 }
