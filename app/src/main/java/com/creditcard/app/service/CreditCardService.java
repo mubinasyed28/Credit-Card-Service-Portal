@@ -99,10 +99,15 @@ public class CreditCardService {
 
     public Map<String, Long> getMetrics() {
         Map<String, Long> metrics = new HashMap<>();
-        metrics.put("total", repository.count());
-        metrics.put("active", repository.countByStatus(CardStatus.ACTIVE));
+        long total = repository.count();
+        long active = repository.countByStatus(CardStatus.ACTIVE);
+        metrics.put("total", total);
+        metrics.put("active", active);
         metrics.put("pending", repository.countByStatus(CardStatus.PENDING));
         metrics.put("blocked", repository.countByStatus(CardStatus.BLOCKED));
+        metrics.put("rejected", repository.countByStatus(CardStatus.REJECTED));
+        long approvalRate = total > 0 ? (active * 100 / total) : 0L;
+        metrics.put("approvalRate", approvalRate);
         return metrics;
     }
 
