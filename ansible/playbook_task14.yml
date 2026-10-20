@@ -1,0 +1,409 @@
+---
+# =============================================================================
+# Ansible Playbook — Task 14: Automated Provisioning & Reliability Validation
+# Student: Mubina (Roll No: 23102A0039) | DevOps Lab | Dr. Snehal Andhare
+# =============================================================================
+# Usage:
+#   Provision clean env : ansible-playbook -i ansible/hosts.ini ansible/playbook_task14.yml
+#   Idempotency check   : ansible-playbook -i ansible/hosts.ini ansible/playbook_task14.yml
+#   Health check only   : ansible-playbook -i ansible/hosts.ini ansible/playbook_task14.yml --tags health
+#   Rollback            : ansible-playbook -i ansible/hosts.ini ansible/playbook_task14.yml --tags rollback
+# =============================================================================
+
+# ===========================================================================
+# PLAY 1: Full Automated Provisioning (Clean Environment Bootstrap)
+# ===========================================================================
+- name: "Task 14 — Play 1: Automated Provisioning of Clean CCSP Target Environment"
+  hosts: ccsp_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    force_redeploy: false
+    stable_image_tag: "1.0.0.5"
+    rollback_image_tag: "1.0.0.4"
+
+  pre_tasks:
+    - name: "Pre | Record provisioning start timestamp"
+      ansible.builtin.set_fact:
+        provision_start_time: "{{ ansible_date_time.iso8601 }}"
+      tags: [always]
+
+    - name: "Pre | Display target environment summary"
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "Task 14: Automated Provisioning & Reliability Validation"
+          - "Target  : {{ inventory_hostname }} ({{ ansible_host }})"
+          - "OS      : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Image   : {{ image_name }}:{{ stable_image_tag }}"
+          - "Port    : {{ host_port }}"
+          - "Started : {{ provision_start_time }}"
+          - "============================================================"
+      tags: [always]
+
+  tasks:
+    # -----------------------------------------------------------------------
+    # PHASE 1: System Package Baseline
+    # -----------------------------------------------------------------------
+    - name: "Phase 1 | Update apt package cache"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == 'Debian'
+      tags: [provision, packages]
+
+    - name: "Phase 1 | Install all required system packages"
+      ansible.builtin.package:
+        name:
+          - curl
+          - wget
+          - ca-certificates
+          - gnupg
+          - lsb-release
+          - python3
+          - python3-pip
+          - git
+          - unzip
+          - net-tools
+          - htop
+        state: present
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [provision, packages]
+
+    # -----------------------------------------------------------------------
+    # PHASE 2: Java Runtime
+    # -----------------------------------------------------------------------
+    - name: "Phase 2 | Install OpenJDK 17 JRE headless"
+      ansible.builtin.package:
+        name: "{{ 'openjdk-17-jre-headless' if ansible_os_family == 'Debian' else 'java-17-openjdk-headless' }}"
+        state: present
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [provision, java]
+
+    - name: "Phase 2 | Verify Java installation"
+      ansible.builtin.command: java -version
+      register: java_check
+      changed_when: false
+      tags: [provision, java, verify]
+
+    # -----------------------------------------------------------------------
+    # PHASE 3: Docker Engine
+    # -----------------------------------------------------------------------
+    - name: "Phase 3 | Add Docker GPG signing key (Debian)"
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: ansible_os_family == 'Debian'
+      tags: [provision, docker]
+
+    - name: "Phase 3 | Add Docker stable apt repository (Debian)"
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+      when: ansible_os_family == 'Debian'
+      tags: [provision, docker]
+
+    - name: "Phase 3 | Install Docker Engine packages"
+      ansible.builtin.package:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [provision, docker]
+
+    - name: "Phase 3 | Ensure Docker daemon is started and enabled at boot"
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [provision, docker, service]
+
+    - name: "Phase 3 | Verify Docker Engine is operational"
+      ansible.builtin.command: docker info --format '{{ "{{.ServerVersion}}" }}'
+      register: docker_ver
+      changed_when: false
+      tags: [provision, docker, verify]
+
+    # -----------------------------------------------------------------------
+    # PHASE 4: Service Account & Directory Structure
+    # -----------------------------------------------------------------------
+    - name: "Phase 4 | Create ccsp system group"
+      ansible.builtin.group:
+        name: ccsp
+        state: present
+        system: true
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [provision, users]
+
+    - name: "Phase 4 | Create ccsp system user (non-login)"
+      ansible.builtin.user:
+        name: ccsp
+        group: ccsp
+        groups: docker
+        system: true
+        shell: /usr/sbin/nologin
+        home: "{{ deploy_dir }}"
+        create_home: false
+        comment: "Credit Card Service Portal service account"
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [provision, users]
+
+    - name: "Phase 4 | Create deployment directory structure"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ deploy_dir }}"
+        - "{{ deploy_dir }}/logs"
+        - "{{ deploy_dir }}/config"
+        - "{{ deploy_dir }}/backups"
+      tags: [provision, directories]
+
+    # -----------------------------------------------------------------------
+    # PHASE 5: Firewall
+    # -----------------------------------------------------------------------
+    - name: "Phase 5 | Open application port {{ host_port }} (UFW — Debian)"
+      community.general.ufw:
+        rule: allow
+        port: "{{ host_port }}"
+        proto: tcp
+        state: enabled
+      when: ansible_os_family == 'Debian'
+      ignore_errors: true
+      tags: [provision, firewall]
+
+    # -----------------------------------------------------------------------
+    # PHASE 6: Application Container Deployment
+    # -----------------------------------------------------------------------
+    - name: "Phase 6 | Pull stable CCSP Docker image"
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        tag: "{{ stable_image_tag }}"
+        source: pull
+        force_source: "{{ force_redeploy }}"
+      tags: [provision, deploy]
+
+    - name: "Phase 6 | Deploy CCSP application container (idempotent)"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}:{{ stable_image_tag }}"
+        state: started
+        restart_policy: "{{ docker_restart_policy }}"
+        ports:
+          - "{{ host_port }}:{{ container_port }}"
+        env:
+          SPRING_PROFILES_ACTIVE: "{{ spring_profile }}"
+          SERVER_PORT: "{{ container_port }}"
+          JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+        memory: "{{ docker_memory_limit }}"
+        labels:
+          managed_by: "ansible"
+          task: "Task 14"
+          app_version: "{{ stable_image_tag }}"
+          maintainer: "Mubina 23102A0039"
+          provisioned_at: "{{ provision_start_time }}"
+        healthcheck:
+          test: ["CMD", "wget", "-qO-", "http://localhost:{{ container_port }}/actuator/health"]
+          interval: 30000000000
+          timeout: 5000000000
+          retries: 3
+          start_period: 25000000000
+      register: container_deploy_result
+      tags: [provision, deploy]
+
+    # -----------------------------------------------------------------------
+    # PHASE 7: Health Verification
+    # -----------------------------------------------------------------------
+    - name: "Phase 7 | Wait for Actuator health endpoint to report UP"
+      ansible.builtin.uri:
+        url: "{{ actuator_health_url }}"
+        method: GET
+        return_content: true
+        status_code: 200
+        timeout: 10
+      register: health_probe
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+      until: health_probe.status == 200 and 'UP' in health_probe.content
+      tags: [provision, health, verify]
+
+    - name: "Phase 7 | Assert H2 database component is healthy"
+      ansible.builtin.assert:
+        that:
+          - "'UP' in health_probe.content"
+          - "health_probe.status == 200"
+        fail_msg: "HEALTH CHECK FAILED: Actuator did not return UP within retry window"
+        success_msg: "HEALTH CHECK PASSED: Application UP, H2 DB healthy, all components green"
+      tags: [provision, health, verify]
+
+    - name: "Phase 7 | Verify credit card listing endpoint (HTTP 200)"
+      ansible.builtin.uri:
+        url: "http://localhost:{{ host_port }}/cards"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: cards_probe
+      tags: [provision, health, verify]
+
+    - name: "Phase 7 | Verify credit card application endpoint (HTTP 200)"
+      ansible.builtin.uri:
+        url: "http://localhost:{{ host_port }}/apply"
+        method: GET
+        status_code: 200
+        timeout: 10
+      tags: [provision, health, verify]
+
+    - name: "Phase 7 | Verify dashboard endpoint (HTTP 200)"
+      ansible.builtin.uri:
+        url: "http://localhost:{{ host_port }}/dashboard"
+        method: GET
+        status_code: 200
+        timeout: 10
+      tags: [provision, health, verify]
+
+    - name: "Phase 7 | Display full Actuator health response"
+      ansible.builtin.debug:
+        msg: "Actuator Health Response: {{ health_probe.json | default(health_probe.content) }}"
+      tags: [provision, health, verify]
+
+    # -----------------------------------------------------------------------
+    # PHASE 8: Post-Deployment Container Audit
+    # -----------------------------------------------------------------------
+    - name: "Phase 8 | Collect running container status"
+      ansible.builtin.command: >
+        docker ps --filter name={{ container_name }}
+        --format "table {{ '{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}\t{{.Names}}' }}"
+      register: container_audit
+      changed_when: false
+      tags: [provision, verify, summary]
+
+    - name: "Phase 8 | Display container audit"
+      ansible.builtin.debug:
+        msg: "{{ container_audit.stdout_lines }}"
+      tags: [provision, verify, summary]
+
+    - name: "Phase 8 | Collect container resource usage"
+      ansible.builtin.command: docker stats {{ container_name }} --no-stream --format "CPU: {{.CPUPerc}}  MEM: {{.MemUsage}}  NET: {{.NetIO}}"
+      register: container_stats
+      changed_when: false
+      ignore_errors: true
+      tags: [provision, verify, summary]
+
+  post_tasks:
+    - name: "Post | Record provisioning completion timestamp"
+      ansible.builtin.set_fact:
+        provision_end_time: "{{ ansible_date_time.iso8601 }}"
+      tags: [always]
+
+    - name: "Post | Provisioning complete summary"
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "PROVISIONING COMPLETE — {{ inventory_hostname }}"
+          - "Image   : {{ image_name }}:{{ stable_image_tag }}"
+          - "Health  : UP (Actuator probe PASSED)"
+          - "Endpoints verified: /actuator/health, /cards, /apply, /dashboard"
+          - "Started : {{ provision_start_time }}"
+          - "Ended   : {{ provision_end_time }}"
+          - "============================================================"
+      tags: [always]
+
+  handlers:
+    - name: restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+
+
+# ===========================================================================
+# PLAY 2: Rollback & Recovery Validation
+# Run with: --tags rollback
+# ===========================================================================
+- name: "Task 14 — Play 2: Rollback & Recovery to Previous Stable Release"
+  hosts: ccsp_servers
+  become: true
+  gather_facts: false
+  tags: [rollback]
+
+  tasks:
+    - name: "Rollback | Display rollback plan"
+      ansible.builtin.debug:
+        msg:
+          - "INITIATING ROLLBACK: {{ image_name }}:1.0.0.5 --> {{ image_name }}:1.0.0.4"
+          - "Reason: Recovery demonstration (Task 14 reliability validation)"
+      tags: [rollback]
+
+    - name: "Rollback | Stop current live container gracefully (SIGTERM)"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        state: stopped
+        stop_timeout: 15
+      tags: [rollback]
+
+    - name: "Rollback | Remove current container"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        state: absent
+      tags: [rollback]
+
+    - name: "Rollback | Pull previous stable image (1.0.0.4)"
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        tag: "1.0.0.4"
+        source: pull
+      tags: [rollback]
+
+    - name: "Rollback | Deploy previous stable container"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}:1.0.0.4"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "{{ host_port }}:{{ container_port }}"
+        env:
+          SPRING_PROFILES_ACTIVE: "{{ spring_profile }}"
+          SERVER_PORT: "{{ container_port }}"
+        labels:
+          managed_by: "ansible"
+          task: "Task 14 Rollback"
+          rollback_from: "1.0.0.5"
+          rollback_to: "1.0.0.4"
+      tags: [rollback]
+
+    - name: "Rollback | Verify restored container health"
+      ansible.builtin.uri:
+        url: "{{ actuator_health_url }}"
+        method: GET
+        return_content: true
+        status_code: 200
+        timeout: 10
+      register: rollback_health
+      retries: 5
+      delay: 10
+      until: rollback_health.status == 200 and 'UP' in rollback_health.content
+      tags: [rollback]
+
+    - name: "Rollback | Verify /cards endpoint on restored version"
+      ansible.builtin.uri:
+        url: "http://localhost:{{ host_port }}/cards"
+        status_code: 200
+      tags: [rollback]
+
+    - name: "Rollback | Display rollback completion summary"
+      ansible.builtin.debug:
+        msg:
+          - "ROLLBACK COMPLETE"
+          - "Previous: {{ image_name }}:1.0.0.5 (stopped & removed)"
+          - "Current : {{ image_name }}:1.0.0.4 (running, healthy)"
+          - "Health  : {{ rollback_health.json.status | default('UP') }}"
+          - "Port    : 0.0.0.0:{{ host_port }}->{{ container_port }}/tcp"
+      tags: [rollback]
