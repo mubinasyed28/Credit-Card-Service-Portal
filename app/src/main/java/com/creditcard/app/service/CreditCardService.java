@@ -40,7 +40,7 @@ public class CreditCardService {
         if (annualIncome == null || annualIncome <= 0) {
             return 0.0;
         }
-        double incomeCap = annualIncome * 0.80; // DELIBERATE REGRESSION DEFECT FOR TASK 10 EXPERIMENT
+        double incomeCap = annualIncome * 0.40;
         return Math.min(incomeCap, cardType.getMaxLimit());
     }
 
