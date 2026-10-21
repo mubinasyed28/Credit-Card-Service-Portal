@@ -1,0 +1,59 @@
+# ========================================================================
+# Git Ignore Rules — Credit Card Service Portal (CCSP)
+# ========================================================================
+
+# Compiled Java Classes & Build Output
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven Wrapper runtime
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE & Editor Configurations
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.code-workspace
+.settings/
+.project
+.classpath
+.factorypath
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+[Nn]on[Rr]oaming/
+$RECYCLE.BIN/
+
+# Log Files & Crash Dumps
+*.log
+logs/
+**/logs/
+hs_err_pid*
+replay_pid*
+
+# Python & Environment Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Temporary Local Tools & Scratch
+tools/
+scratch/
+tmp/
+*.tmp
