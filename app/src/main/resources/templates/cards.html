@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Directory - Credit Card Service Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #F8F9FA; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .status-badge { font-size: 0.85rem; padding: 0.4em 0.7em; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+        <div class="container">
+            <a class="navbar-brand text-primary-emphasis" href="/">💳 Credit Card Service Portal</a>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" id="nav-dashboard" href="/">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link active" id="nav-cards" href="/cards">Card Directory</a></li>
+                    <li class="nav-item"><a class="nav-link" id="nav-apply" href="/apply">Apply for Card</a></li>
+                    <li class="nav-item"><a class="nav-link text-warning" id="nav-actuator" href="/health">Health Check</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <!-- Flash Messages -->
+        <div th:if="${successMessage}" class="alert alert-success alert-dismissible fade show" role="alert" id="alert-success">
+            <span th:text="${successMessage}">Operation successful!</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <div th:if="${warningMessage}" class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning">
+            <span th:text="${warningMessage}">Warning notification!</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <div th:if="${errorMessage}" class="alert alert-danger alert-dismissible fade show" role="alert" id="alert-error">
+            <span th:text="${errorMessage}">Error notification!</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="fw-bold text-navy" id="directory-heading">Credit Card Master Directory</h2>
+                <p class="text-muted mb-0">Search, filter, and govern customer cards and application lifecycles.</p>
+            </div>
+            <div>
+                <a href="/apply" class="btn btn-primary" id="btn-apply-header">+ Apply for New Card</a>
+            </div>
+        </div>
+
+        <!-- Search and Filter Bar -->
+        <div class="card border-0 shadow-sm p-3 mb-4">
+            <form method="get" action="/cards" class="row g-2 align-items-center" id="search-form">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <span class="input-group-text bg-white">🔍</span>
+                        <input type="text" class="form-control" name="query" id="search-input"
+                               placeholder="Search by customer name or card number..."
+                               th:value="${query}">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" name="status" id="status-filter">
+                        <option value="">All Statuses</option>
+                        <option th:each="st : ${allStatuses}"
+                                th:value="${st}"
+                                th:text="${st.label}"
+                                th:selected="${st == selectedStatus}">ACTIVE</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1" id="btn-search">Filter Records</button>
+                    <a href="/cards" class="btn btn-outline-secondary" id="btn-reset">Reset</a>
+                </div>
+            </form>
+        </div>
+
+        <!-- Cards Directory Table -->
+        <div class="card border-0 shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="cards-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Card Number</th>
+                            <th>Customer Name</th>
+                            <th>Email</th>
+                            <th>Tier</th>
+                            <th>Credit Limit</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr th:if="${#lists.isEmpty(cards)}" id="no-cards-row">
+                            <td colspan="8" class="text-center py-4 text-muted">
+                                <em>No matching credit card records found.</em>
+                            </td>
+                        </tr>
+                        <tr th:each="card : ${cards}" th:id="'card-row-' + ${card.id}">
+                            <td class="fw-bold" th:text="'#' + ${card.id}">#1</td>
+                            <td><code class="fw-bold text-dark card-num" th:text="${card.cardNumber}">****-****-****-1234</code></td>
+                            <td class="fw-semibold customer-name" th:text="${card.customerName}">Name</td>
+                            <td class="text-muted" th:text="${card.email}">email@example.com</td>
+                            <td><span class="badge bg-light text-dark border" th:text="${card.cardType.displayName}">Platinum</span></td>
+                            <td class="fw-bold" th:text="'₹' + ${#numbers.formatDecimal(card.creditLimit, 0, 'COMMA', 2, 'POINT')}">₹5,00,000.00</td>
+                            <td>
+                                <span class="badge status-badge"
+                                      th:id="'status-badge-' + ${card.id}"
+                                      th:classappend="'bg-' + ${card.status.badgeClass}"
+                                      th:text="${card.status.label}">ACTIVE</span>
+                            </td>
+                            <td class="text-end">
+                                <!-- Action Buttons -->
+                                <div class="btn-group btn-group-sm">
+                                    <form th:if="${card.status.name() == 'PENDING'}"
+                                          th:action="@{'/cards/' + ${card.id} + '/approve'}" method="post" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-success btn-approve"
+                                                th:id="'btn-approve-' + ${card.id}">Approve</button>
+                                    </form>
+                                    <form th:if="${card.status.name() == 'PENDING'}"
+                                          th:action="@{'/cards/' + ${card.id} + '/reject'}" method="post" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary btn-reject"
+                                                th:id="'btn-reject-' + ${card.id}">Reject</button>
+                                    </form>
+                                    <form th:if="${card.status.name() == 'ACTIVE'}"
+                                          th:action="@{'/cards/' + ${card.id} + '/block'}" method="post" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger btn-block"
+                                                th:id="'btn-block-' + ${card.id}">Freeze</button>
+                                    </form>
+                                    <form th:if="${card.status.name() == 'BLOCKED'}"
+                                          th:action="@{'/cards/' + ${card.id} + '/unblock'}" method="post" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary btn-unblock"
+                                                th:id="'btn-unblock-' + ${card.id}">Unblock</button>
+                                    </form>
+                                    <button type="button" class="btn btn-sm btn-outline-info btn-adjust-limit"
+                                            th:id="'btn-adjust-limit-' + ${card.id}"
+                                            data-bs-toggle="modal"
+                                            th:data-bs-target="'#limitModal-' + ${card.id}">
+                                        Adjust
+                                    </button>
+                                </div>
+
+                                <!-- Limit Adjustment Modal -->
+                                <div class="modal fade" th:id="'limitModal-' + ${card.id}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog modal-dialog-centered">
+                                        <div class="modal-content text-start">
+                                            <form th:action="@{'/cards/' + ${card.id} + '/update-limit'}" method="post">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">Adjust Limit: Card #<span th:text="${card.id}"></span></h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <p class="text-muted small mb-2">Customer: <strong th:text="${card.customerName}"></strong> | Tier: <span th:text="${card.cardType.displayName}"></span></p>
+                                                    <div class="mb-3">
+                                                        <label class="form-label fw-semibold">New Credit Limit (INR)</label>
+                                                        <input type="number" step="1000" min="1000" name="newLimit" class="form-control"
+                                                               th:value="${card.creditLimit}" required>
+                                                        <div class="form-text">Limit is capped at 40% of customer annual income and tier maximum.</div>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                    <button type="submit" class="btn btn-primary" th:id="'btn-save-limit-' + ${card.id}">Save Limit</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
