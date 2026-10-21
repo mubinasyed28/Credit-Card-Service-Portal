@@ -1,0 +1,33 @@
+# Git files
+.git
+.gitignore
+.github
+
+# Build targets & local binaries
+**/target/
+app/target/
+*.class
+*.jar
+*.war
+
+# IDE and tool configuration
+.idea/
+.vscode/
+*.iml
+.gemini/
+
+# Documentation and temporary archives
+docs/
+docs/prev/
+*.docx
+*.pdf
+
+# Python scripts & virtual environments
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Screenshots
+screenshots/failures/
+screenshots/task*/raw/
