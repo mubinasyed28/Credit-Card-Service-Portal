@@ -1,0 +1,383 @@
+---
+# =============================================================================
+# Ansible Playbook — Credit Card Service Portal (CCSP) Provisioning
+# Student: Mubina (Roll No: 23102A0039) | DevOps Lab | Dr. Snehal Andhare
+# Task 13: Configuration Management Script
+# =============================================================================
+# Usage:
+#   ansible-playbook -i ansible/hosts.ini ansible/playbook.yml
+#   ansible-playbook -i ansible/hosts.ini ansible/playbook.yml --tags rollback
+#
+# Idempotency: Running this playbook a second time MUST yield changed=0, failed=0
+# =============================================================================
+
+- name: "CCSP Provision — System Prerequisites, Docker Engine & Application Deployment"
+  hosts: ccsp_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    # Override here or pass via -e flag
+    force_redeploy: false
+
+  # ---------------------------------------------------------------------------
+  # PRE-TASKS: OS & Dependency Validation
+  # ---------------------------------------------------------------------------
+  pre_tasks:
+    - name: "Pre-check | Confirm target OS family is supported"
+      ansible.builtin.assert:
+        that:
+          - ansible_os_family in ['Debian', 'RedHat', 'Windows']
+        fail_msg: "Unsupported OS family: {{ ansible_os_family }}. Only Debian/RedHat/Windows supported."
+        success_msg: "OS family {{ ansible_os_family }} is supported. Proceeding."
+      tags: [always]
+
+    - name: "Pre-check | Display provisioning target summary"
+      ansible.builtin.debug:
+        msg:
+          - "Host         : {{ inventory_hostname }} ({{ ansible_host }})"
+          - "OS           : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "App Image    : {{ image_name }}:{{ image_tag }}"
+          - "Container    : {{ container_name }} on port {{ host_port }}"
+          - "Deploy Dir   : {{ deploy_dir }}"
+      tags: [always]
+
+  # ---------------------------------------------------------------------------
+  # TASKS
+  # ---------------------------------------------------------------------------
+  tasks:
+
+    # --- 1. System Package Updates -------------------------------------------
+    - name: "System | Update apt package cache (Debian/Ubuntu)"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == 'Debian'
+      tags: [system, packages]
+
+    - name: "System | Update yum package cache (RedHat/CentOS)"
+      ansible.builtin.yum:
+        update_cache: true
+      when: ansible_os_family == 'RedHat'
+      tags: [system, packages]
+
+    # --- 2. Required System Packages -----------------------------------------
+    - name: "Packages | Ensure required system packages are installed"
+      ansible.builtin.package:
+        name:
+          - curl
+          - wget
+          - ca-certificates
+          - gnupg
+          - lsb-release
+          - python3
+          - python3-pip
+          - git
+          - unzip
+        state: present
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [packages]
+
+    # --- 3. Java Runtime (for health check scripts) --------------------------
+    - name: "Java | Ensure OpenJDK 17 runtime is installed"
+      ansible.builtin.package:
+        name: "{{ 'openjdk-17-jre-headless' if ansible_os_family == 'Debian' else 'java-17-openjdk-headless' }}"
+        state: present
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [java, packages]
+
+    - name: "Java | Verify java version"
+      ansible.builtin.command: java -version
+      register: java_version_output
+      changed_when: false
+      tags: [java]
+
+    - name: "Java | Display java version"
+      ansible.builtin.debug:
+        msg: "Java installed: {{ java_version_output.stderr | default(java_version_output.stdout) }}"
+      tags: [java]
+
+    # --- 4. Docker Engine Installation ---------------------------------------
+    - name: "Docker | Add Docker GPG key (Debian)"
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: ansible_os_family == 'Debian'
+      tags: [docker]
+
+    - name: "Docker | Add Docker apt repository (Debian)"
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+      when: ansible_os_family == 'Debian'
+      tags: [docker]
+
+    - name: "Docker | Ensure Docker Engine packages are installed"
+      ansible.builtin.package:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [docker]
+
+    - name: "Docker | Ensure Docker service is enabled and running"
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [docker, service]
+
+    - name: "Docker | Verify Docker daemon is operational"
+      ansible.builtin.command: docker info --format '{{.ServerVersion}}'
+      register: docker_version
+      changed_when: false
+      tags: [docker]
+
+    - name: "Docker | Display Docker version"
+      ansible.builtin.debug:
+        msg: "Docker Engine version: {{ docker_version.stdout }}"
+      tags: [docker]
+
+    # --- 5. Application User & Directory Provisioning ------------------------
+    - name: "AppUser | Ensure dedicated application group exists"
+      ansible.builtin.group:
+        name: ccsp
+        state: present
+        system: true
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [users, directories]
+
+    - name: "AppUser | Ensure dedicated application user exists (ccsp)"
+      ansible.builtin.user:
+        name: ccsp
+        group: ccsp
+        system: true
+        shell: /usr/sbin/nologin
+        home: "{{ deploy_dir }}"
+        create_home: false
+        comment: "Credit Card Service Portal service account"
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [users]
+
+    - name: "AppUser | Add ccsp user to docker group for container management"
+      ansible.builtin.user:
+        name: ccsp
+        groups: docker
+        append: true
+      when: ansible_os_family in ['Debian', 'RedHat']
+      tags: [users]
+
+    - name: "Directory | Ensure application deployment directory exists"
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}"
+        state: directory
+        owner: "{{ 'ccsp' if ansible_os_family in ['Debian', 'RedHat'] else omit }}"
+        group: "{{ 'ccsp' if ansible_os_family in ['Debian', 'RedHat'] else omit }}"
+        mode: '0755'
+      tags: [directories]
+
+    - name: "Directory | Ensure application log directory exists"
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/logs"
+        state: directory
+        mode: '0755'
+      tags: [directories]
+
+    - name: "Directory | Ensure application config directory exists"
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}/config"
+        state: directory
+        mode: '0755'
+      tags: [directories]
+
+    # --- 6. Firewall / Port Configuration ------------------------------------
+    - name: "Firewall | Open application port {{ host_port }} (UFW — Debian)"
+      community.general.ufw:
+        rule: allow
+        port: "{{ host_port }}"
+        proto: tcp
+        state: enabled
+      when: ansible_os_family == 'Debian'
+      ignore_errors: true
+      tags: [firewall]
+
+    - name: "Firewall | Open application port {{ host_port }} (firewalld — RedHat)"
+      ansible.posix.firewalld:
+        port: "{{ host_port }}/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+      when: ansible_os_family == 'RedHat'
+      ignore_errors: true
+      tags: [firewall]
+
+    # --- 7. Docker Image Pull ------------------------------------------------
+    - name: "Docker Image | Pull versioned CCSP image from registry"
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        tag: "{{ image_tag }}"
+        source: pull
+        force_source: "{{ force_redeploy }}"
+      tags: [deploy, image]
+
+    # --- 8. Container Deployment (Idempotent) --------------------------------
+    - name: "Container | Deploy CCSP application container (idempotent)"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}:{{ image_tag }}"
+        state: started
+        restart_policy: "{{ docker_restart_policy }}"
+        ports:
+          - "{{ host_port }}:{{ container_port }}"
+        env:
+          SPRING_PROFILES_ACTIVE: "{{ spring_profile }}"
+          SERVER_PORT: "{{ container_port }}"
+          JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+        memory: "{{ docker_memory_limit }}"
+        labels:
+          managed_by: "ansible"
+          app_version: "{{ app_version }}"
+          task: "Task 13"
+          maintainer: "Mubina 23102A0039"
+        healthcheck:
+          test: ["CMD", "wget", "-qO-", "http://localhost:{{ container_port }}/actuator/health"]
+          interval: 30000000000
+          timeout: 5000000000
+          retries: 3
+          start_period: 25000000000
+      tags: [deploy, container]
+
+    # --- 9. Application Health Verification ----------------------------------
+    - name: "Health | Wait for application to become healthy"
+      ansible.builtin.uri:
+        url: "{{ actuator_health_url }}"
+        method: GET
+        return_content: true
+        status_code: 200
+        timeout: 10
+      register: health_result
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+      until: health_result.status == 200 and 'UP' in health_result.content
+      tags: [health, verify]
+
+    - name: "Health | Display actuator health response"
+      ansible.builtin.debug:
+        msg: "Actuator Health: {{ health_result.json | default(health_result.content) }}"
+      tags: [health, verify]
+
+    - name: "Health | Verify /cards endpoint is accessible"
+      ansible.builtin.uri:
+        url: "http://localhost:{{ host_port }}/cards"
+        method: GET
+        status_code: 200
+      tags: [health, verify]
+
+    # --- 10. Deployment Verification Summary ---------------------------------
+    - name: "Summary | Collect running container info"
+      ansible.builtin.command: >
+        docker ps --filter name={{ container_name }}
+        --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+      register: container_status
+      changed_when: false
+      tags: [verify, summary]
+
+    - name: "Summary | Display container status"
+      ansible.builtin.debug:
+        msg: "{{ container_status.stdout_lines }}"
+      tags: [verify, summary]
+
+  # ---------------------------------------------------------------------------
+  # POST-TASKS: Final Idempotency Confirmation
+  # ---------------------------------------------------------------------------
+  post_tasks:
+    - name: "Post | Confirm all services are in desired state"
+      ansible.builtin.debug:
+        msg:
+          - "Provisioning complete for: {{ inventory_hostname }}"
+          - "Container {{ container_name }} is running {{ image_name }}:{{ image_tag }} on port {{ host_port }}"
+          - "Health: {{ health_result.json.status | default('UP') }}"
+          - "Second run idempotency: all tasks should report changed=0"
+      tags: [always]
+
+  # ---------------------------------------------------------------------------
+  # HANDLERS: Triggered only on actual changes
+  # ---------------------------------------------------------------------------
+  handlers:
+    - name: restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+
+# =============================================================================
+# PLAY 2: Rollback to Previous Stable Container
+# Run with: ansible-playbook ... --tags rollback
+# =============================================================================
+- name: "CCSP Rollback — Restore Previous Stable Container Version"
+  hosts: ccsp_servers
+  become: true
+  gather_facts: false
+  tags: [rollback]
+
+  vars:
+    rollback_tag: "1.0.0.4"   # Previous stable build number
+
+  tasks:
+    - name: "Rollback | Stop current container"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        state: stopped
+      tags: [rollback]
+
+    - name: "Rollback | Remove current container"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        state: absent
+      tags: [rollback]
+
+    - name: "Rollback | Pull previous stable image"
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        tag: "{{ rollback_tag }}"
+        source: pull
+      tags: [rollback]
+
+    - name: "Rollback | Deploy previous stable container"
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}:{{ rollback_tag }}"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "{{ host_port }}:{{ container_port }}"
+        env:
+          SPRING_PROFILES_ACTIVE: "{{ spring_profile }}"
+          SERVER_PORT: "{{ container_port }}"
+        labels:
+          managed_by: "ansible"
+          rollback_from: "{{ image_tag }}"
+          rollback_to: "{{ rollback_tag }}"
+      tags: [rollback]
+
+    - name: "Rollback | Verify restored container health"
+      ansible.builtin.uri:
+        url: "{{ actuator_health_url }}"
+        method: GET
+        status_code: 200
+        timeout: 15
+      retries: 5
+      delay: 10
+      register: rollback_health
+      until: rollback_health.status == 200
+      tags: [rollback]
+
+    - name: "Rollback | Display rollback result"
+      ansible.builtin.debug:
+        msg: "Rollback COMPLETE: Container now running {{ image_name }}:{{ rollback_tag }} | Health: {{ rollback_health.json.status | default('UP') }}"
+      tags: [rollback]
