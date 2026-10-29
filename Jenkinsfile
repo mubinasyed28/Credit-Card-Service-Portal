@@ -37,12 +37,7 @@ pipeline {
                 echo "Workspace: ${WORKSPACE_PATH}"
                 echo "Build Number: ${BUILD_NUMBER}"
                 echo "Target Environment: ${params.DEPLOY_ENV}"
-                echo "=========================================================="
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/dev']],
-                    userRemoteConfigs: [[url: "file:///c:/Users/YOCKET-271/Downloads/DevOps_AI_Starter_Kit"]]
-                ])
+                checkout scm
             }
         }
 
