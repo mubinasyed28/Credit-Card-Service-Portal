@@ -57,3 +57,7 @@ tools/
 scratch/
 tmp/
 *.tmp
+
+# Generated Scripts & Screenshot Evidence
+scripts/
+screenshots/
