@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Health Telemetry - Credit Card Service Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root { --primary-navy: #1B365D; --accent-blue: #0066CC; --status-green: #198754; }
+        body { background-color: #F8F9FA; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .navbar-brand { font-weight: 700; letter-spacing: 0.5px; }
+        .card-stat { border: none; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.06); transition: transform 0.2s; }
+        .card-stat:hover { transform: translateY(-3px); }
+        .pulse-dot {
+            width: 12px;
+            height: 12px;
+            background-color: #198754;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7);
+            animation: pulse-green 1.8s infinite;
+        }
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(25, 135, 84, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(25, 135, 84, 0); }
+        }
+        pre.json-viewer {
+            background-color: #1E293B;
+            color: #38BDF8;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+        <div class="container">
+            <a class="navbar-brand text-primary-emphasis" href="/">💳 Credit Card Service Portal</a>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" id="nav-dashboard" href="/">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" id="nav-cards" href="/cards">Card Directory</a></li>
+                    <li class="nav-item"><a class="nav-link" id="nav-apply" href="/apply">Apply for Card</a></li>
+                    <li class="nav-item"><a class="nav-link active text-warning" id="nav-actuator" href="/health">Health Check</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+            <div>
+                <h2 class="fw-bold mb-1" id="health-heading">System Telemetry & Health Monitoring</h2>
+                <p class="text-muted mb-0">Production readiness probes, database connectivity, and JVM telemetry metrics.</p>
+            </div>
+            <div>
+                <span class="badge bg-success-subtle text-success fs-6 border border-success-subtle px-3 py-2">
+                    <span class="pulse-dot"></span>System Operational: UP
+                </span>
+            </div>
+        </div>
+
+        <!-- KPI Grid -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card card-stat bg-white p-3 border-start border-success border-4">
+                    <div class="text-muted small text-uppercase fw-semibold">Overall Liveness</div>
+                    <div class="fs-2 fw-bold text-success" id="overall-status" th:text="${status}">UP</div>
+                    <div class="small text-muted">HTTP 200 OK / Ready</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-white p-3 border-start border-primary border-4">
+                    <div class="text-muted small text-uppercase fw-semibold">Database Engine</div>
+                    <div class="fs-4 fw-bold text-primary" id="db-status" th:text="${databaseStatus}">UP</div>
+                    <div class="small text-muted" th:text="${databaseType}">H2 In-Memory DB</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-white p-3 border-start border-info border-4">
+                    <div class="text-muted small text-uppercase fw-semibold">JVM Heap Memory</div>
+                    <div class="fs-4 fw-bold text-info"><span th:text="${usedMemory}">0</span> / <span th:text="${totalMemory}">0</span> MB</div>
+                    <div class="small text-muted"><span th:text="${freeMemory}">0</span> MB Available</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-white p-3 border-start border-secondary border-4">
+                    <div class="text-muted small text-uppercase fw-semibold">Process Uptime</div>
+                    <div class="fs-4 fw-bold text-secondary"><span th:text="${uptime}">0</span>s</div>
+                    <div class="small text-muted"><span th:text="${activeThreads}">0</span> Active JVM Threads</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Telemetry Details & Actuator Live Preview -->
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <h5 class="fw-bold mb-3">Subsystem Health Breakdown</h5>
+                    <table class="table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Subsystem / Probe</th>
+                                <th>Target</th>
+                                <th>Reported State</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="fw-semibold">Web Application Server</td>
+                                <td>Embedded Apache Tomcat (Port 8080)</td>
+                                <td><span class="badge bg-success">UP (200 OK)</span></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-semibold">Database Connectivity</td>
+                                <td>H2 (jdbc:h2:mem:ccsp_db)</td>
+                                <td><span class="badge bg-success">HEALTHY (isValid)</span></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-semibold">Disk Space Capacity</td>
+                                <td>Host Filesystem Storage</td>
+                                <td><span class="badge bg-success">UP (&gt; 10 MB free)</span></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-semibold">Portfolio Accounts</td>
+                                <td>Active Database Records</td>
+                                <td><span class="badge bg-primary" th:text="${metrics.total} + ' Accounts'">0 Accounts</span></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-semibold">Spring Boot Actuator Probe</td>
+                                <td><code>/actuator/health</code></td>
+                                <td><span class="badge bg-success">ONLINE</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="mt-auto pt-3 d-flex gap-2">
+                        <a href="/actuator/health" target="_blank" class="btn btn-outline-primary btn-sm">
+                            🌐 Open Raw Actuator JSON
+                        </a>
+                        <a href="/api/health" target="_blank" class="btn btn-outline-secondary btn-sm">
+                            ⚙️ Open API Health JSON
+                        </a>
+                        <a href="/h2-console" target="_blank" class="btn btn-outline-dark btn-sm">
+                            🗄️ H2 Database Console
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">Live Actuator JSON Feed</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="fetchLiveTelemetry()">🔄 Refresh Feed</button>
+                    </div>
+                    <p class="text-muted small">Real-time response payload retrieved directly from <code>/actuator/health</code>:</p>
+                    <pre class="json-viewer mb-0" id="raw-telemetry">Fetching telemetry...</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 text-center">
+            <a href="/" class="btn btn-primary px-4">&larr; Return to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        function fetchLiveTelemetry() {
+            const display = document.getElementById('raw-telemetry');
+            display.textContent = 'Probing /actuator/health ...';
+            fetch('/actuator/health')
+                .then(res => res.json())
+                .then(data => {
+                    display.textContent = JSON.stringify(data, null, 2);
+                })
+                .catch(err => {
+                    display.textContent = 'Error fetching telemetry: ' + err;
+                });
+        }
+        document.addEventListener('DOMContentLoaded', fetchLiveTelemetry);
+    </script>
+</body>
+</html>

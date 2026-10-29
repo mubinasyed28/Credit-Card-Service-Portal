@@ -1,88 +1,75 @@
 <?xml version='1.1' encoding='UTF-8'?>
-<project>
+<flow-definition plugin="workflow-job@1400.v7fd111b_ec82f">
   <actions/>
-  <description>Continuous Integration Build &amp; Test Job for Credit Card Service Portal (CCSP). Engineered for Mubina (Roll No: 23102A0039), B.E. Computer Engineering, DevOps Lab supervised by Dr. Snehal Andhare. Automatically compiles source code, executes JUnit 5 test suites, validates quality gates, packages executable Spring Boot JAR, and archives build artifacts upon Git SCM commit detection or periodic polling.</description>
+  <description>Pipeline CI/CD for Credit Card Service Portal (CCSP). Mubina (Roll No: 23102A0039), B.E. Computer Engineering, DevOps Lab – Dr. Snehal Andhare. Executes Checkout, Build, Test, Package, and Deploy stages via local Jenkinsfile.</description>
   <keepDependencies>false</keepDependencies>
   <properties>
     <jenkins.model.BuildDiscarderProperty>
       <strategy class="hudson.tasks.LogRotator">
         <daysToKeep>14</daysToKeep>
-        <numToKeep>20</numToKeep>
+        <numToKeep>10</numToKeep>
         <artifactDaysToKeep>7</artifactDaysToKeep>
         <artifactNumToKeep>5</artifactNumToKeep>
       </strategy>
     </jenkins.model.BuildDiscarderProperty>
-    <com.coravy.hudson.plugins.github.GithubProjectProperty plugin="github@1.38.0">
-      <projectUrl>https://github.com/mubina-ce/credit-card-portal/</projectUrl>
-      <displayName>Credit Card Service Portal</displayName>
-    </com.coravy.hudson.plugins.github.GithubProjectProperty>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.ChoiceParameterDefinition>
+          <name>DEPLOY_ENV</name>
+          <description>Target deployment environment profile</description>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>staging</string>
+              <string>production</string>
+              <string>development</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>SERVER_PORT</name>
+          <defaultValue>8080</defaultValue>
+          <description>HTTP port for application server binding</description>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.BooleanParameterDefinition>
+          <name>RUN_TESTS</name>
+          <defaultValue>true</defaultValue>
+          <description>Enforce automated JUnit 5 test quality gate</description>
+        </hudson.model.BooleanParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>DOCKER_REGISTRY</name>
+          <defaultValue>mubina23102a0039</defaultValue>
+          <description>Docker Hub username / local registry prefix</description>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.BooleanParameterDefinition>
+          <name>PUSH_TO_REGISTRY</name>
+          <defaultValue>false</defaultValue>
+          <description>Push versioned image to Docker Hub registry after build</description>
+        </hudson.model.BooleanParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
   </properties>
-  <scm class="hudson.plugins.git.GitSCM" plugin="git@5.2.1">
-    <configVersion>2</configVersion>
-    <userRemoteConfigs>
-      <hudson.plugins.git.UserRemoteConfig>
-        <name>origin</name>
-        <url>https://github.com/mubina-ce/credit-card-portal.git</url>
-      </hudson.plugins.git.UserRemoteConfig>
-    </userRemoteConfigs>
-    <branches>
-      <hudson.plugins.git.BranchSpec>
-        <name>*/dev</name>
-      </hudson.plugins.git.BranchSpec>
-    </branches>
-    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
-    <submoduleCfg class="empty-list"/>
-    <extensions>
-      <hudson.plugins.git.extensions.impl.CleanBeforeCheckout/>
-      <hudson.plugins.git.extensions.impl.AuthorInChangelog/>
-    </extensions>
-  </scm>
-  <canRoam>true</canRoam>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps@3990.vd281b_2d87059">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git@5.2.1">
+      <configVersion>2</configVersion>
+      <userRemoteConfigs>
+        <hudson.plugins.git.UserRemoteConfig>
+          <url>file:///c:/Users/YOCKET-271/Downloads/DevOps_AI_Starter_Kit</url>
+        </hudson.plugins.git.UserRemoteConfig>
+      </userRemoteConfigs>
+      <branches>
+        <hudson.plugins.git.BranchSpec>
+          <name>*/dev</name>
+        </hudson.plugins.git.BranchSpec>
+      </branches>
+      <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+      <submoduleCfg class="empty-list"/>
+      <extensions/>
+    </scm>
+    <scriptPath>Jenkinsfile</scriptPath>
+    <lightweight>true</lightweight>
+  </definition>
+  <triggers/>
   <disabled>false</disabled>
-  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
-  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
-  <triggers>
-    <hudson.triggers.SCMTrigger>
-      <spec>H/5 * * * *</spec>
-      <ignorePostCommitHooks>false</ignorePostCommitHooks>
-    </hudson.triggers.SCMTrigger>
-    <com.cloudbees.jenkins.GitHubPushTrigger plugin="github@1.38.0">
-      <spec></spec>
-    </com.cloudbees.jenkins.GitHubPushTrigger>
-  </triggers>
-  <concurrentBuild>false</concurrentBuild>
-  <builders>
-    <hudson.tasks.Maven>
-      <targets>clean test package -DskipTests=false</targets>
-      <mavenName>Maven-3.9.6</mavenName>
-      <pom>app/pom.xml</pom>
-      <usePrivateRepository>false</usePrivateRepository>
-      <settings class="jenkins.mvn.DefaultSettingsProvider"/>
-      <globalSettings class="jenkins.mvn.DefaultGlobalSettingsProvider"/>
-      <injectBuildVariables>true</injectBuildVariables>
-    </hudson.tasks.Maven>
-  </builders>
-  <publishers>
-    <hudson.tasks.ArtifactArchiver>
-      <artifacts>app/target/*.jar</artifacts>
-      <allowEmptyArchive>false</allowEmptyArchive>
-      <onlyIfSuccessful>true</onlyIfSuccessful>
-      <fingerprint>true</fingerprint>
-      <defaultExcludes>true</defaultExcludes>
-      <caseSensitive>true</caseSensitive>
-      <followSymlinks>false</followSymlinks>
-    </hudson.tasks.ArtifactArchiver>
-    <hudson.tasks.junit.JUnitResultArchiver plugin="junit@1259.v47604ee77d54">
-      <testResults>app/target/surefire-reports/*.xml</testResults>
-      <keepLongStdio>true</keepLongStdio>
-      <healthScaleFactor>1.0</healthScaleFactor>
-      <allowEmptyResults>false</allowEmptyResults>
-    </hudson.tasks.junit.JUnitResultArchiver>
-  </publishers>
-  <buildWrappers>
-    <hudson.plugins.timestamper.TimestamperBuildWrapper plugin="timestamper@1.26"/>
-    <hudson.plugins.ansicolor.AnsiColorBuildWrapper plugin="ansicolor@1.0.4">
-      <colorMapName>xterm</colorMapName>
-    </hudson.plugins.ansicolor.AnsiColorBuildWrapper>
-  </buildWrappers>
-</project>
+</flow-definition>

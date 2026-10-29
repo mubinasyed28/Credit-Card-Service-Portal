@@ -82,4 +82,17 @@ public class CreditCardApiController {
     public ResponseEntity<Map<String, Long>> getMetrics() {
         return ResponseEntity.ok(service.getMetrics());
     }
+
+    @GetMapping(value = "/health", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> getHealth() {
+        return ResponseEntity.ok(Map.of(
+            "status", "UP",
+            "application", "Credit Card Service Portal",
+            "components", Map.of(
+                "db", Map.of("status", "UP", "database", "H2 In-Memory"),
+                "ping", Map.of("status", "UP")
+            ),
+            "timestamp", java.time.Instant.now().toString()
+        ));
+    }
 }

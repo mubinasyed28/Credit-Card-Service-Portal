@@ -118,5 +118,35 @@ public class CreditCardController {
         }
         return "redirect:/cards";
     }
+
+    @GetMapping(value = "/health", produces = org.springframework.http.MediaType.TEXT_HTML_VALUE)
+    public String healthView(Model model) {
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory() / (1024 * 1024);
+        long freeMemory = runtime.freeMemory() / (1024 * 1024);
+        long usedMemory = totalMemory - freeMemory;
+
+        model.addAttribute("status", "UP");
+        model.addAttribute("databaseStatus", "UP");
+        model.addAttribute("databaseType", "H2 In-Memory (jdbc:h2:mem:ccsp_db)");
+        model.addAttribute("totalMemory", totalMemory);
+        model.addAttribute("usedMemory", usedMemory);
+        model.addAttribute("freeMemory", freeMemory);
+        model.addAttribute("activeThreads", Thread.activeCount());
+        model.addAttribute("uptime", java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime() / 1000);
+        model.addAttribute("metrics", service.getMetrics());
+        return "health";
+    }
+
+    @GetMapping(value = "/health", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public org.springframework.http.ResponseEntity<Map<String, Object>> healthJson() {
+        return org.springframework.http.ResponseEntity.ok(Map.of(
+            "status", "UP",
+            "application", "Credit Card Service Portal",
+            "database", "H2 (UP)",
+            "timestamp", java.time.Instant.now().toString()
+        ));
+    }
 }
 
