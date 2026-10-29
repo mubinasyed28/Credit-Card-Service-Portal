@@ -33,10 +33,11 @@ pipeline {
         stage('Checkout SCM') {
             steps {
                 echo "=========================================================="
-                echo "Stage 1: Checkout SCM from Local Git Repository"
-                echo "Workspace: ${WORKSPACE_PATH}"
+                echo "Stage 1: SCM Checkout from GitHub Repository"
+                echo "Repository: https://github.com/mubinasyed28/Credit-Card-Service-Portal.git"
                 echo "Build Number: ${BUILD_NUMBER}"
                 echo "Target Environment: ${params.DEPLOY_ENV}"
+                echo "=========================================================="
                 checkout scm
             }
         }
